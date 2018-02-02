@@ -1,5 +1,6 @@
 package com.shotbygun.collections;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -12,7 +13,7 @@ public class ArraySwapper<T> {
     // Locks
     private final ReentrantLock clientLock;
     private final Object masterLock;
-    private Object notifyObject;
+    private CountDownLatch notifyLatch;
     
     // Major variables
     private boolean masterHasAlpha;
@@ -27,15 +28,15 @@ public class ArraySwapper<T> {
         
         masterLock = new Object();
         clientLock = new ReentrantLock(false);
-        notifyObject = new Object();
+        //notifyThread = null;
         
         masterHasAlpha = true;
         clientPointer = beta;
     }
     
-    public ArraySwapper(Class<T> type, int arraySize, Object notifyObject) {
+    public ArraySwapper(Class<T> type, int arraySize, CountDownLatch notifyLatch) {
         this(type, arraySize);
-        this.notifyObject = notifyObject;
+        this.notifyLatch = notifyLatch;
     }
     
     public void put(T item) {
@@ -55,15 +56,16 @@ public class ArraySwapper<T> {
             */
             synchronized(masterLock) {
                 while(!clientPointer.put(item)) {
-                    notifyObject.notify();
+                    if(notifyLatch != null)
+                        notifyLatch.countDown();
                     masterLock.notify();
                     masterLock.wait();
                 }
             }
             
             
-        } catch (Exception ex) {
-            //Log.critical("networking", this.getClass().getSimpleName(), "internal error on ArraySwapper", ex);
+        } catch (InterruptedException ex) {
+            //We expect high amount of interruptions
         } finally {
             // Unlock everything
             clientLock.unlock();
@@ -76,10 +78,10 @@ public class ArraySwapper<T> {
         synchronized(masterLock) {
             
             if(masterHasAlpha) {
-                alpha.clear();
+                alpha.reset();
                 clientPointer = alpha;
             } else {
-                beta.clear();
+                beta.reset();
                 clientPointer = beta;
             }
 
@@ -91,6 +93,11 @@ public class ArraySwapper<T> {
             return alpha;
         else
             return beta;
+    }
+    
+    public void clear() {
+        alpha.clear();
+        beta.clear();
     }
     
     /**
@@ -105,6 +112,14 @@ public class ArraySwapper<T> {
         out += alpha.size();
         out += beta.size();
         return out;
+    }
+    
+    /**
+     * get capacity
+     * @return integer, combined capacity of arrayQueues
+     */
+    public int length() {
+        return alpha.length() + beta.length();
     }
     
 }

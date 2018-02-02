@@ -47,9 +47,19 @@ public class ArrayQueue<T> {
     /**
      * Nothing is actually removed, pointers are just set to 0
      */
-    public void clear() {
+    public void reset() {
         setter = 0;
         getter = 0;
+    }
+    
+    /**
+     * calls reset() then nullifies items in array
+     */
+    public void clear() {
+        reset();
+        for(int i = 0; i < size; i++) {
+            array[i] = null;
+        }
     }
     
     /**
@@ -58,6 +68,15 @@ public class ArrayQueue<T> {
      */
     public int size() {
         return setter;
+    }
+    
+    
+    /**
+     * 
+     * @return capacity
+     */
+    public int length() {
+        return size;
     }
     
 }
