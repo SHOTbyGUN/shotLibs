@@ -1,6 +1,11 @@
+/*
+    Designed to be ItemTransferQueue backed by two generic arrays
+    - Optimized for multiple provider & one consumer use-case
+*/
+
 package com.shotbygun.collections;
 
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -13,14 +18,14 @@ public class ArraySwapper<T> {
     // Locks
     private final ReentrantLock clientLock;
     private final Object masterLock;
-    private CountDownLatch notifyLatch;
+    private CyclicBarrier notifyLatch;
     
     // Major variables
     private boolean masterHasAlpha;
     private final ArrayQueue alpha, beta;
     
     // Client variables
-    private ArrayQueue clientPointer;
+    private ArrayQueue queuePointer;
     
     public ArraySwapper(Class<T> type, int arraySize) {
         alpha = new ArrayQueue(type, arraySize);
@@ -28,13 +33,18 @@ public class ArraySwapper<T> {
         
         masterLock = new Object();
         clientLock = new ReentrantLock(false);
-        //notifyThread = null;
         
         masterHasAlpha = true;
-        clientPointer = beta;
+        queuePointer = beta;
     }
     
-    public ArraySwapper(Class<T> type, int arraySize, CountDownLatch notifyLatch) {
+    /**
+     * 
+     * @param type
+     * @param arraySize
+     * @param notifyLatch optional, providers will reset() CyclicBarrier if backing ArrayQueue is full
+     */
+    public ArraySwapper(Class<T> type, int arraySize, CyclicBarrier notifyLatch) {
         this(type, arraySize);
         this.notifyLatch = notifyLatch;
     }
@@ -55,10 +65,17 @@ public class ArraySwapper<T> {
                 And this class is supposed to be optimized for the one consumer
             */
             synchronized(masterLock) {
-                while(!clientPointer.put(item)) {
+                while(!queuePointer.put(item)) {
+                    // put has failed, backing queue is full
+                    
+                    // Notify waiting consumer, by resetting CyclicBarrier
                     if(notifyLatch != null)
-                        notifyLatch.countDown();
+                        notifyLatch.reset();
+                    
+                    // Notify consumer if consumer is waiting us
                     masterLock.notify();
+                    
+                    // Wait until consumer has called swap()
                     masterLock.wait();
                 }
             }
@@ -79,10 +96,10 @@ public class ArraySwapper<T> {
             
             if(masterHasAlpha) {
                 alpha.reset();
-                clientPointer = alpha;
+                queuePointer = alpha;
             } else {
                 beta.reset();
-                clientPointer = beta;
+                queuePointer = beta;
             }
 
             masterHasAlpha = !masterHasAlpha;
@@ -105,7 +122,7 @@ public class ArraySwapper<T> {
      * This is not thread safe operation
      * which means that values are estimate
      * 
-     * @return int[2]
+     * @return integer, combined amount of items stored
      */
     public int size() {
         int out = 0;
